@@ -1,0 +1,149 @@
+﻿@using EaiGuy.ServiceControl.Monitor.Messages.Events
+@model EaiGuy.ServiceControl.Monitor.Messages.Events.IHealthStatusChanged
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>@Model.ChangeSummary</title>
+    <style type="text/css">
+        <!--
+               body {
+                   margin: 0 auto;
+                   width: 1200px;
+               }
+               h1 {
+                   font-size: 14px;
+                   font-weight: bold;
+               }
+               table {
+                   border: 1px solid black;
+                   text-align: left;
+               }
+               table.content {
+                   table-layout: fixed;
+                   width: 100%;
+               }
+               table.content td {
+                   word-wrap: break-word;
+                   overflow-wrap: break-word;
+               }
+               th {
+                   background-color: #365F91;
+                   color: white;
+               }
+               /* maybe I just need to reboot, but for some reason this JustBroke isn't working unless I copy it twice. Otherwise Outlook is adding an extra period after tr ("tr..JustBroke") */
+               tr.JustBroke {
+                   background-color: #D99594;
+               }
+               tr.JustBroke {
+                   background-color: #D99594;
+               }
+               tr.StillBroken {
+                   background-color: #F2DBDB;
+               }
+               tr.JustStartedWorkingAgain {
+                   background-color: #C2D69B;
+               }-->
+    </style>
+</head>
+<body>
+    <p>
+        This email lists ESB endpoints that just started or stopped reporting heartbeats, endpoint custom checks that just started failing or passing again, 
+        and new failed messages. See <a href="@(Model.ServicePulseUrl)">ServicePulse</a> for details.
+    </p>
+
+    <h1>
+        Endpoints: @(((Model.EndpointsThatJustDied.Any() || Model.EndpointsThatJustBecameAlive.Any()) ? Model.EndpointStatus.TrimEnd(new char[] { ';', ' ' })
+        : "No endpoint heartbeat changes")
+        + string.Format("; {0} monitored endpoints are {1}dead.", Model.DeadEndpointCount, Model.DeadEndpointCount > 0 ? "still " : ""))
+    </h1>
+    @if(Model.EndpointsThatJustDied.Any() || Model.EndpointsThatJustBecameAlive.Any())
+    {
+    <p>For any endpoints that just went down, please ensure that the endpoint's Windows service is functioning properly.</p>
+    <table>
+        <tr><th>Host</th><th>Endpoint</th><th>Heartbeat</th><th>Last Heartbeat Received</th></tr>
+        @foreach (var endpointStopped in Model.EndpointsThatJustDied)
+        {
+        <tr class="JustBroke">
+            <td>@(endpointStopped.Host)</td>
+            <td>@(endpointStopped.EndpointName.Replace(".", " "))</td>
+            <td>Dead</td>
+            <td>@(endpointStopped.LastReceivedAt.ToString("g"))</td>
+        </tr>
+        }
+        @foreach (var endpointStarted in Model.EndpointsThatJustBecameAlive)
+        {
+            <tr class="JustStartedWorkingAgain">
+                <td>@(endpointStarted.Host)</td>
+                <td>@(endpointStarted.EndpointName.Replace(".", " "))</td>
+                <td>Beating</td>
+                <td>@(endpointStarted.RestoredAt.ToString("g"))</td>
+            </tr>
+        }
+    </table>
+    }
+
+    <h1>
+        Custom Checks: @(((Model.CustomChecksThatJustStartedFailing.Any() || Model.CustomChecksThatJustStoppedFailing.Any())
+            ? Model.CheckStatus.TrimEnd(new char[] { ';', ' ' }) : "No custom check changes")
+            + string.Format("; {0} checks are {1}failing.", Model.FailedCheckCount, Model.FailedCheckCount > 0 ? "still " : ""))
+    </h1>
+    @if (Model.CustomChecksThatJustStartedFailing.Any() || Model.CustomChecksThatJustStoppedFailing.Any())
+    {
+    <p>Please take steps to resolve any custom checks that are failing, since they will prevent their endpoint from functioning properly.</p>
+    <table class="content">
+        <tr><th>Host</th><th>Endpoint</th><th>Check</th><th>Status</th><th>Reported At</th><th>Failure Reason</th></tr>
+        @foreach (var checkFailed in Model.CustomChecksThatJustStartedFailing)
+        {
+        <tr class="JustBroke">
+            <td>@(checkFailed.Host)</td>
+            <td>@(checkFailed.EndpointName.Replace(".", " "))</td>
+            <td>@(checkFailed.CustomCheckId)</td>
+            <td>Fail</td>
+            <td>@(checkFailed.FailedAt.ToString("g"))</td>
+            <td>@(checkFailed.FailureReason)</td>
+        </tr>
+        }
+        @foreach (var checkSucceeded in Model.CustomChecksThatJustStoppedFailing)
+        {
+            <tr class="JustStartedWorkingAgain">
+                <td>@(checkSucceeded.Host)</td>
+                <td>@(checkSucceeded.EndpointName.Replace(".", " "))</td>
+                <td>@(checkSucceeded.CustomCheckId)</td>
+                <td>Pass</td>
+                <td>@(checkSucceeded.SucceededAt.ToString("g"))</td>
+                <td></td>
+            </tr>
+        }
+    </table>
+    }
+
+    <h1>Failed Messages: @(Model.FailedMessages.Any() ? Model.FailedMsgStatus : "No New Failed Messages")</h1>
+    @if (Model.FailedMessages.Any())
+    {
+    <p>Please look into why these messaegs failed, and contact business users to determine whether or not to resubmit the messages with ServiceInsight.</p>
+    <table class="content">
+        <tr>
+            <th style="width:15%;">Host</th>
+            <th style="width:20%;">Endpoint</th>
+            <th>Message Type</th>
+            <th style="width:15%;">Reported At</th>
+            <th style="width:20%;">Failure Reason</th>
+        </tr>
+        @foreach (var failedMsg in Model.FailedMessages)
+        {
+        <tr class="JustBroke">
+            <td>@(failedMsg.ProcessingEndpoint.Host)</td>
+            <td>@(failedMsg.ProcessingEndpoint.Name.Replace(".", " "))</td>
+            <td>@(failedMsg.MessageType.Replace(".", " "))</td>
+            <td>@(failedMsg.FailureDetails.TimeOfFailure.ToString("g"))</td>
+            <td>@(failedMsg.FailureDetails.Exception.Message)</td>
+        </tr>
+        }
+    </table>
+    <br />
+    }
+
+    <p><small>@DateTime.Now.ToString("g")</small></p>
+</body>
+</html>
